@@ -1,0 +1,38 @@
+@import "tailwindcss";
+
+@theme inline {
+  --font-sans: var(--font-space-grotesk), Inter, system-ui, sans-serif;
+  --color-mint: #7cf2b0;
+  --color-muted: #9aa6bd;
+}
+
+body {
+  background: radial-gradient(ellipse at 30% 0%, #1b2a4a, #090d18 60%) fixed #090d18;
+  color: #e8ecf4;
+}
+
+/* UK coins and notes (prototype variant C). */
+.coin {
+  display: inline-grid;
+  place-items: center;
+  flex: none;
+  border-radius: 50%;
+  font-weight: 700;
+  color: #3a2a12;
+  text-shadow: 0 1px 0 rgba(255, 255, 255, 0.5);
+  box-shadow: inset 0 -2px 3px rgba(0, 0, 0, 0.25), 0 2px 4px rgba(0, 0, 0, 0.3);
+}
+.coin.copper { background: radial-gradient(circle at 35% 30%, #f6c09a, #c06a33 55%, #7a3a17); color: #3b1a06; }
+.coin.silver { background: radial-gradient(circle at 35% 30%, #fff, #cfd4db 50%, #868d97); color: #2a2f36; }
+.coin.bi { background: radial-gradient(circle, #e6e9ee 0 30%, #a8aeb7 44%, #e8c25a 46%, #b8902a 70%, #8a6a17); }
+.coin.hept {
+  border-radius: 0;
+  clip-path: polygon(50% 0, 89.1% 18.8%, 98.7% 61.1%, 71.7% 95%, 28.3% 95%, 1.3% 61.1%, 10.9% 18.8%);
+}
+.coin.dodec {
+  border-radius: 0;
+  clip-path: polygon(50% 0, 75% 6.7%, 93.3% 25%, 100% 50%, 93.3% 75%, 75% 93.3%, 50% 100%, 25% 93.3%, 6.7% 75%, 0 50%, 6.7% 25%, 25% 6.7%);
+}
+.coin.note { border-radius: 4px; color: #fff; text-shadow: none; }
+.coin.n500 { background: linear-gradient(135deg, #46b3a8, #237a72); }
+.coin.n1000 { background: linear-gradient(135deg, #f0924b, #b85a1c); }
