@@ -1,0 +1,14 @@
+import { machine } from "@/lib/machine";
+import type { PurchaseResult } from "@/lib/vending-machine";
+
+function statusOf(result: PurchaseResult): number {
+  if (result.ok) return 200;
+  if (result.code === "INVALID_REQUEST") return 400;
+  if (result.code === "RATE_LIMITED") return 429;
+  return 422;
+}
+
+export async function POST(request: Request) {
+  const result = machine.purchase(await request.json(), Date.now());
+  return Response.json({ result, machine: machine.getSnapshot() }, { status: statusOf(result) });
+}
