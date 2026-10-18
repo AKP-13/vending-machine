@@ -1,0 +1,369 @@
+<!doctype html>
+<!-- PROTOTYPE, throw away. Three visual directions for Q16, switch with ?variant=A|B|C or the bottom bar. -->
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Vending Prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Space+Grotesk:wght@400;500;600;700&family=VT323&display=swap" rel="stylesheet" />
+<style>
+  * { box-sizing: border-box; margin: 0; }
+  body { font-family: Inter, system-ui, sans-serif; min-height: 100vh; }
+  button { font: inherit; cursor: pointer; border: 0; background: none; color: inherit; }
+
+  /* ---------- Coins (shared) ---------- */
+  .coin { display: inline-grid; place-items: center; border-radius: 50%; font-weight: 700; color: #3a2a12;
+    text-shadow: 0 1px 0 rgba(255,255,255,.5); box-shadow: inset 0 -2px 3px rgba(0,0,0,.25), 0 2px 4px rgba(0,0,0,.3); flex: none; }
+  .coin.copper { background: radial-gradient(circle at 35% 30%, #f6c09a, #c06a33 55%, #7a3a17); color: #3b1a06; }
+  .coin.silver { background: radial-gradient(circle at 35% 30%, #fff, #cfd4db 50%, #868d97); color: #2a2f36; }
+  .coin.hept { border-radius: 0; clip-path: polygon(50% 0, 89.1% 18.8%, 98.7% 61.1%, 71.7% 95%, 28.3% 95%, 1.3% 61.1%, 10.9% 18.8%); }
+  .coin.bi { background: radial-gradient(circle, #e6e9ee 0 30%, #a8aeb7 44%, #e8c25a 46%, #b8902a 70%, #8a6a17); }
+  .coin.dodec { border-radius: 0; clip-path: polygon(50% 0, 75% 6.7%, 93.3% 25%, 100% 50%, 93.3% 75%, 75% 93.3%, 50% 100%, 25% 93.3%, 6.7% 75%, 0 50%, 6.7% 25%, 25% 6.7%); }
+  .coin.note { border-radius: 4px; color: #fff; text-shadow: none; }
+  .coin.n500 { background: linear-gradient(135deg, #46b3a8, #237a72); }
+  .coin.n1000 { background: linear-gradient(135deg, #f0924b, #b85a1c); }
+  .coin.flat { box-shadow: none; text-shadow: none; }
+  .coin.flat.copper { background: #e9a678; } .coin.flat.silver { background: #dfe3e8; }
+  .coin.flat.bi { background: radial-gradient(circle, #dfe3e8 0 45%, #f0cc6a 47%); }
+  .coinbtn { transition: transform .12s; } .coinbtn.notebtn { grid-column: span 2; } .coinbtn:active { transform: translateY(2px) scale(.94); }
+  @keyframes drop { from { transform: translateY(-120px) rotate(-12deg); opacity: 0; } to { transform: none; opacity: 1; } }
+  @keyframes clink { 0% { transform: translateY(-60px); opacity: 0; } 70% { transform: translateY(4px); opacity: 1; } 100% { transform: none; } }
+  .drop { display: inline-block; animation: drop .6s cubic-bezier(.3,1.4,.6,1) both; }
+  .clink { animation: clink .45s ease-out both; }
+  @media (prefers-reduced-motion: reduce) { .drop, .clink { animation: none; } }
+
+  /* ---------- Service panel (shared markup, styled per variant) ---------- */
+  .svc h3 { font-size: 13px; letter-spacing: .08em; text-transform: uppercase; margin-bottom: 12px; }
+  .svc-totals { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; margin-bottom: 14px; }
+  .svc-totals div { padding: 10px; border-radius: 10px; }
+  .svc-totals span { display: block; font-size: 11px; opacity: .7; } .svc-totals b { font-size: 20px; font-variant-numeric: tabular-nums; }
+  .svc-row { display: grid; grid-template-columns: 26px 1fr 34px; align-items: center; gap: 8px; margin: 5px 0; font-size: 12px; font-variant-numeric: tabular-nums; }
+  .svc-row .bar { height: 6px; border-radius: 3px; overflow: hidden; } .svc-row .bar i { display: block; height: 100%; border-radius: 3px; }
+  .svc-row.empty { opacity: .45; } .svc-row.empty span { color: #e5484d; font-weight: 700; }
+  .svc-log { margin-top: 12px; font-size: 11.5px; display: grid; gap: 4px; max-height: 168px; overflow: hidden; }
+  .svc-log time { opacity: .55; font-variant-numeric: tabular-nums; margin-right: 6px; }
+  .svc-log .bad { color: #e5484d; } .svc-log .good { color: #30a46c; }
+  .svc-actions { display: flex; gap: 6px; margin-top: 12px; } .svc-actions button { flex: 1; padding: 8px; border-radius: 8px; font-size: 12px; font-weight: 600; }
+
+  /* ---------- Variant A: realistic cabinet ---------- */
+  .va { min-height: 100vh; background: radial-gradient(ellipse at top, #4a4542, #1d1b1a 70%); padding: 32px 16px 110px; color: #eee; }
+  .va-stage { display: flex; gap: 24px; justify-content: center; align-items: flex-start; flex-wrap: wrap; }
+  .va-machine { width: min(760px, 100%); background: linear-gradient(90deg, #8c141c, #c42430 12%, #b31f2a 88%, #7a1118); border-radius: 18px 18px 8px 8px;
+    padding: 14px; box-shadow: 0 30px 60px rgba(0,0,0,.6), inset 0 2px 0 rgba(255,255,255,.25); }
+  .va-marquee { text-align: center; font: 700 26px/1 "Space Grotesk"; letter-spacing: .3em; padding: 12px; margin-bottom: 12px; border-radius: 10px;
+    background: linear-gradient(#fff8e0, #ffd977); color: #8c141c; box-shadow: 0 0 24px rgba(255,217,119,.6), inset 0 -3px 0 rgba(0,0,0,.15); }
+  .va-body { display: grid; grid-template-columns: 1fr 220px; gap: 14px; }
+  .va-glass { position: relative; background: linear-gradient(#20242b, #0f1115); border: 6px solid #2a2e35; border-radius: 8px; padding: 10px; overflow: hidden; }
+  .va-reflect { position: absolute; inset: 0; pointer-events: none; background: linear-gradient(115deg, transparent 30%, rgba(255,255,255,.09) 38%, transparent 46%, transparent 60%, rgba(255,255,255,.05) 64%, transparent 70%); }
+  .va-shelf { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; padding-bottom: 6px; margin-bottom: 10px; border-bottom: 6px solid #9aa1ab; }
+  .va-slot { position: relative; height: 112px; display: grid; place-items: center; border-radius: 6px; transition: background .15s; }
+  .va-slot:hover { background: rgba(255,255,255,.05); } .va-slot.sel { background: rgba(255,217,119,.14); outline: 2px solid #ffd977; }
+  .va-item { font-size: 46px; filter: drop-shadow(0 4px 4px rgba(0,0,0,.5)); }
+  .va-spiral { position: absolute; bottom: 22px; left: 12%; right: 12%; height: 10px; background: repeating-linear-gradient(100deg, #c7ccd3 0 3px, transparent 3px 11px); opacity: .3; }
+  .va-tag { position: absolute; bottom: 0; left: 50%; transform: translateX(-50%); background: #fff; color: #111; font-size: 11px; padding: 1px 6px; border-radius: 3px; white-space: nowrap; }
+  .va-panel { background: linear-gradient(#3a3f47, #23262c); border-radius: 8px; padding: 12px; display: flex; flex-direction: column; gap: 8px; box-shadow: inset 0 1px 0 rgba(255,255,255,.15); }
+  .va-lcd { background: #0b1a0b; border: 3px solid #111; border-radius: 6px; padding: 8px 10px; font: 20px/1.05 VT323, monospace; color: #6dff7a; text-shadow: 0 0 6px rgba(109,255,122,.7); min-height: 112px; }
+  .va-lcd .big { font-size: 26px; } .va-lcd .err { color: #ff6b5e; text-shadow: 0 0 6px rgba(255,107,94,.7); }
+  .va-label { font-size: 10px; letter-spacing: .15em; color: #9aa1ab; margin-top: 2px; }
+  .va-cards { display: flex; gap: 4px; flex-wrap: wrap; }
+  .va-cards button { padding: 4px 8px; border-radius: 4px; background: #2b2f36; font-size: 11px; border: 1px solid #4a505a; }
+  .va-cards button.on { background: #ffd977; color: #111; border-color: #ffd977; }
+  .va-slotline { height: 8px; width: 60%; margin: 2px auto; background: #0b0c0e; border-radius: 4px; box-shadow: inset 0 2px 3px #000, 0 1px 0 rgba(255,255,255,.2); }
+  .va-coins { display: grid; grid-template-columns: repeat(4, 1fr); gap: 6px; justify-items: center; }
+  .va-btns { display: grid; grid-template-columns: 2fr 1fr; gap: 6px; margin-top: 4px; }
+  .va-btns button { padding: 12px 0; border-radius: 8px; font-weight: 800; letter-spacing: .1em; box-shadow: inset 0 -4px 0 rgba(0,0,0,.3); }
+  .va-buy { background: #2fbf5b; color: #052; } .va-cancel { background: #d43b3b; color: #fff; font-size: 11px; }
+  .va-bottom { display: grid; grid-template-columns: 1fr 220px; gap: 14px; margin-top: 14px; }
+  .va-flap, .va-cup { height: 84px; border-radius: 8px; background: linear-gradient(#0b0c0e, #24272d); box-shadow: inset 0 6px 10px #000; display: flex; align-items: flex-end; justify-content: center; gap: 4px; padding: 8px; flex-wrap: wrap; }
+  .va-flap { font: 700 12px "Space Grotesk"; letter-spacing: .3em; color: #555; align-items: center; } .va-flap .drop { font-size: 44px; }
+  .va .svc { width: 260px; background: linear-gradient(#5b6069, #3c4047); border-radius: 10px; padding: 16px; border: 2px solid #6e747e; box-shadow: 0 20px 40px rgba(0,0,0,.5); }
+  .va .svc-totals div { background: #1b1d21; font-family: VT323, monospace; } .va .svc-totals b { color: #6dff7a; font-size: 24px; font-weight: 400; }
+  .va .svc-row .bar { background: #1b1d21; } .va .svc-row .bar i { background: #6dff7a; }
+  .va .svc-actions button { background: #2b2f36; border: 1px solid #6e747e; }
+
+  /* ---------- Variant B: flat kiosk ---------- */
+  .vb { min-height: 100vh; background: #f6f7f9; color: #14161a; padding: 28px 16px 110px; }
+  .vb-wrap { max-width: 1120px; margin: 0 auto; }
+  .vb-top { display: flex; justify-content: space-between; align-items: flex-end; gap: 16px; flex-wrap: wrap; margin-bottom: 24px; }
+  .vb-top h1 { font-size: 32px; letter-spacing: -.02em; } .vb-top p { color: #6b7280; margin-top: 4px; }
+  .vb-seg { display: flex; background: #e8eaee; padding: 4px; border-radius: 999px; gap: 2px; }
+  .vb-seg button { padding: 8px 14px; border-radius: 999px; font-weight: 600; font-size: 14px; color: #4b5563; display: flex; align-items: center; gap: 6px; }
+  .vb-seg button.on { background: #fff; color: #111; box-shadow: 0 1px 3px rgba(0,0,0,.12); }
+  .vb-seg i { width: 20px; height: 20px; border-radius: 50%; display: inline-grid; place-items: center; font-style: normal; font-size: 11px; color: #fff; }
+  .vb-main { display: grid; grid-template-columns: 1fr 360px; gap: 24px; align-items: start; }
+  .vb-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; }
+  .vb-card { background: #fff; border-radius: 18px; padding: 18px; text-align: left; border: 2px solid transparent; box-shadow: 0 1px 2px rgba(0,0,0,.05); transition: border-color .15s, transform .15s; }
+  .vb-card:hover { transform: translateY(-2px); } .vb-card.sel { border-color: #2563eb; }
+  .vb-card .em { width: 64px; height: 64px; border-radius: 16px; display: grid; place-items: center; font-size: 34px; margin-bottom: 14px; }
+  .vb-card b { display: block; font-size: 15px; } .vb-card span { color: #6b7280; font-size: 13px; }
+  .vb-card .pr { margin-top: 10px; font-size: 18px; font-weight: 700; color: #111; }
+  .vb-order { background: #fff; border-radius: 22px; padding: 22px; box-shadow: 0 10px 30px rgba(0,0,0,.06); position: sticky; top: 20px; }
+  .vb-order h2 { font-size: 18px; margin-bottom: 14px; }
+  .vb-line { display: flex; align-items: center; gap: 12px; padding: 12px; background: #f6f7f9; border-radius: 14px; }
+  .vb-line .em { font-size: 28px; } .vb-line div { flex: 1; } .vb-line small { color: #6b7280; }
+  .vb-empty { padding: 18px; text-align: center; color: #9ca3af; border: 2px dashed #e5e7eb; border-radius: 14px; }
+  .vb-sub { font-size: 13px; font-weight: 600; color: #6b7280; margin: 18px 0 10px; }
+  .vb-coins { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; justify-items: center; }
+  .vb-dl { margin: 18px 0; display: grid; gap: 8px; font-size: 15px; } .vb-dl div { display: flex; justify-content: space-between; font-variant-numeric: tabular-nums; }
+  .vb-dl .tot { font-weight: 700; font-size: 18px; border-top: 1px solid #eee; padding-top: 10px; }
+  .vb-pay { width: 100%; padding: 16px; border-radius: 14px; background: #2563eb; color: #fff; font-weight: 700; font-size: 16px; }
+  .vb-clear { width: 100%; padding: 10px; margin-top: 6px; color: #6b7280; font-size: 14px; }
+  .vb-res { margin-top: 14px; padding: 14px; border-radius: 14px; font-size: 14px; }
+  .vb-res.ok { background: #e9f9ef; color: #146c3a; } .vb-res.bad { background: #fdecec; color: #a01d1d; }
+  .vb-res b { display: block; font-size: 15px; margin-bottom: 6px; } .vb-res .row { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+  .vb .svc { max-width: 1120px; margin: 24px auto 0; background: #fff; border-radius: 22px; padding: 20px; display: grid; grid-template-columns: 220px 1fr 1fr; gap: 24px; box-shadow: 0 1px 2px rgba(0,0,0,.05); }
+  .vb .svc h3 { grid-column: 1 / -1; margin: 0; color: #6b7280; }
+  .vb .svc-totals { grid-template-columns: 1fr; margin: 0; } .vb .svc-totals div { background: #f6f7f9; }
+  .vb .svc-coins { display: grid; grid-template-columns: 1fr 1fr; column-gap: 18px; }
+  .vb .svc-row .bar { background: #eef0f3; } .vb .svc-row .bar i { background: #2563eb; }
+  .vb .svc-actions button { background: #f1f3f6; }
+
+  /* ---------- Variant C: hybrid ---------- */
+  .vc { min-height: 100vh; background: radial-gradient(ellipse at 30% 0%, #1b2a4a, #090d18 60%); color: #e8ecf4; padding: 32px 16px 110px; font-family: "Space Grotesk", Inter, sans-serif; }
+  .vc-stage { display: flex; gap: 24px; justify-content: center; align-items: flex-start; flex-wrap: wrap; }
+  .vc-machine { width: min(780px, 100%); background: linear-gradient(160deg, #222b3d, #121826); border-radius: 36px; padding: 18px; border: 1px solid rgba(255,255,255,.08);
+    box-shadow: 0 40px 80px rgba(0,0,0,.55), inset 0 1px 0 rgba(255,255,255,.08); display: grid; grid-template-columns: 1fr 260px; gap: 16px; }
+  .vc-glass { background: linear-gradient(180deg, rgba(120,160,255,.08), rgba(120,160,255,.02)); border: 1px solid rgba(255,255,255,.08); border-radius: 24px; padding: 14px;
+    display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .vc-card { background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.06); border-radius: 16px; padding: 14px 10px 10px; display: grid; justify-items: center; gap: 6px; transition: .15s; }
+  .vc-card:hover { background: rgba(255,255,255,.08); } .vc-card.sel { border-color: #7cf2b0; box-shadow: 0 0 0 3px rgba(124,242,176,.2); }
+  .vc-card .em { font-size: 40px; } .vc-card small { font-size: 12px; color: #9aa6bd; text-align: center; }
+  .vc-card .pill { display: flex; gap: 6px; font-size: 12px; } .vc-card .pill span { padding: 2px 8px; border-radius: 999px; background: rgba(255,255,255,.08); }
+  .vc-card .pill b { padding: 2px 8px; border-radius: 999px; background: #7cf2b0; color: #062; }
+  .vc-screen { background: #0a0f1c; border-radius: 22px; padding: 16px; border: 1px solid rgba(255,255,255,.06); display: flex; flex-direction: column; gap: 12px; }
+  .vc-av { display: flex; gap: 8px; align-items: center; } .vc-av span { font-size: 11px; color: #6c7894; margin-right: auto; text-transform: uppercase; letter-spacing: .1em; }
+  .vc-av button { width: 32px; height: 32px; border-radius: 50%; font-size: 13px; font-weight: 700; color: #fff; opacity: .45; transition: .15s; }
+  .vc-av button.on { opacity: 1; box-shadow: 0 0 0 2px #0a0f1c, 0 0 0 4px #7cf2b0; }
+  .vc-sel { font-size: 13px; color: #9aa6bd; } .vc-sel b { display: block; color: #fff; font-size: 18px; }
+  .vc-credit { display: flex; justify-content: space-between; align-items: baseline; } .vc-credit span { color: #9aa6bd; font-size: 13px; }
+  .vc-credit b { font-size: 34px; font-variant-numeric: tabular-nums; letter-spacing: -.02em; }
+  .vc-prog { height: 6px; background: rgba(255,255,255,.08); border-radius: 3px; overflow: hidden; } .vc-prog i { display: block; height: 100%; background: #7cf2b0; transition: width .3s; }
+  .vc-hint { font-size: 12px; color: #9aa6bd; }
+  .vc-coins { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; justify-items: center; }
+  .vc-btns { display: grid; grid-template-columns: 2fr 1fr; gap: 8px; }
+  .vc-btns button { padding: 13px; border-radius: 14px; font-weight: 700; }
+  .vc-credit.done b { color: #9aa6bd; } .vc-coins.locked { opacity: .3; pointer-events: none; }
+  .vc-new { padding: 13px; border-radius: 14px; font-weight: 700; background: #fff; color: #0a0f1c; }
+  .vc-buy { background: #7cf2b0; color: #052; } .vc-cancel { background: rgba(255,255,255,.08); }
+  .vc-res { padding: 12px; border-radius: 14px; font-size: 13px; } .vc-res b { display: block; font-size: 14px; margin-bottom: 4px; }
+  .vc-res.ok { background: rgba(124,242,176,.12); color: #a9f7cc; } .vc-res.bad { background: rgba(255,107,94,.12); color: #ffb1a8; }
+  .vc-tray { grid-column: 1 / -1; display: grid; grid-template-columns: 1fr 260px; gap: 16px; }
+  .vc-tray > div { height: 80px; border-radius: 20px; background: #070a12; box-shadow: inset 0 8px 16px rgba(0,0,0,.6); display: flex; align-items: center; justify-content: center; gap: 4px; flex-wrap: wrap; padding: 8px;
+    font-size: 11px; color: #3c4660; letter-spacing: .2em; text-transform: uppercase; }
+  .vc-tray .drop { font-size: 40px; }
+  .vc .svc { width: 270px; background: rgba(255,255,255,.04); border: 1px solid rgba(255,255,255,.08); border-radius: 24px; padding: 18px; backdrop-filter: blur(10px); }
+  .vc .svc h3 { color: #6c7894; } .vc .svc-totals div { background: rgba(255,255,255,.05); }
+  .vc .svc-row .bar { background: rgba(255,255,255,.08); } .vc .svc-row .bar i { background: linear-gradient(90deg, #4cc9f0, #7cf2b0); }
+  .vc .svc-actions button { background: rgba(255,255,255,.08); }
+
+  @media (max-width: 820px) {
+    .va-body, .va-bottom, .vc-machine, .vc-tray, .vb-main { grid-template-columns: 1fr; }
+    .vb-grid { grid-template-columns: repeat(2, 1fr); }
+    .vb .svc { grid-template-columns: 1fr; } .va .svc, .vc .svc { width: 100%; }
+  }
+
+  /* ---------- Prototype bar (not part of the design) ---------- */
+  #bar { position: fixed; bottom: 18px; left: 50%; transform: translateX(-50%); z-index: 99; display: flex; align-items: center; gap: 6px; padding: 6px; border-radius: 999px;
+    background: #111; color: #fff; font: 600 13px Inter, sans-serif; box-shadow: 0 10px 30px rgba(0,0,0,.4), 0 0 0 2px #ff3df0; white-space: nowrap; }
+  #bar button { padding: 6px 12px; border-radius: 999px; background: #2a2a2a; } #bar button:hover { background: #3a3a3a; }
+  #bar #lbl { min-width: 190px; text-align: center; } #bar .sep { width: 1px; height: 20px; background: #444; margin: 0 4px; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div id="bar">
+  <button data-bar="-1">←</button><span id="lbl"></span><button data-bar="1">→</button>
+  <span class="sep"></span>
+  <button data-scn="idle">Idle</button><button data-scn="success">Success</button><button data-scn="refused">Refused</button>
+</div>
+<script>
+const COINS = [200, 100, 50, 20, 10, 5, 2, 1];
+const PAY = [1, 2, 5, 10, 20, 50, 100, 200, 500, 1000];
+const PRODUCTS = [
+  { code: 'A1', name: 'Sea Salt Crisps', emoji: '🥔', price: 85, tint: '#fff3d6' },
+  { code: 'A2', name: 'Milk Chocolate', emoji: '🍫', price: 120, tint: '#f6e7dc' },
+  { code: 'A3', name: 'Salted Pretzels', emoji: '🥨', price: 95, tint: '#fbe9d0' },
+  { code: 'B1', name: 'Classic Cola', emoji: '🥤', price: 135, tint: '#fde2e2' },
+  { code: 'B2', name: 'Still Water', emoji: '💧', price: 65, tint: '#dff1fd' },
+  { code: 'B3', name: 'Apple Juice', emoji: '🧃', price: 110, tint: '#e6f7dc' },
+  { code: 'C1', name: 'Energy Drink', emoji: '⚡', price: 245, tint: '#fff8c5' },
+  { code: 'C2', name: 'Choc Chip Cookies', emoji: '🍪', price: 150, tint: '#f5e6d6' },
+  { code: 'C3', name: 'Roasted Peanuts', emoji: '🥜', price: 175, tint: '#f7ecd9' },
+];
+const CUSTOMERS = [
+  { name: 'Ada', color: '#7c5cff' }, { name: 'Ben', color: '#ff7a59' }, { name: 'Cleo', color: '#1fb5a5' },
+];
+const VARIANTS = { A: 'Realistic cabinet', B: 'Flat kiosk', C: 'Hybrid' };
+
+const fullSupply = () => Object.fromEntries(COINS.map(c => [c, 10]));
+let s = { customer: 'Ada', product: 'A1', inserted: [50, 20, 10], result: null, supply: fullSupply(), cash: 0, log: [] };
+
+const stamp = () => new Date().toTimeString().slice(0, 8);
+const log = e => s.log.unshift({ ...e, at: stamp() });
+let rapidRuns = 0;
+const fmt = p => p < 100 ? `${p}p` : `£${(p / 100).toFixed(2)}`;
+const sum = a => a.reduce((x, y) => x + y, 0);
+const prod = code => PRODUCTS.find(p => p.code === code);
+
+// Bounded min-coin change; each physical coin is one 0/1 item, large coins first so ties keep larger coins.
+function makeChange(amount, supply) {
+  const best = Array(amount + 1).fill(null); best[0] = [];
+  for (const c of COINS) for (let k = 0; k < supply[c]; k++)
+    for (let a = amount; a >= c; a--)
+      if (best[a - c] && (!best[a] || best[a - c].length + 1 < best[a].length)) best[a] = [...best[a - c], c];
+  return best[amount];
+}
+
+function coin(v, size = 34, flat = false) {
+  const kind = v >= 500 ? `note n${v}` : v <= 2 ? 'copper' : v === 20 || v === 50 ? 'silver hept' : v === 100 ? 'bi dodec' : v === 200 ? 'bi' : 'silver';
+  const w = v >= 500 ? size * 1.5 : size * (v === 1 ? .8 : v === 5 ? .75 : v === 2 || v === 10 || v === 200 ? 1 : .9);
+  const h = v >= 500 ? size * .8 : w;
+  return `<span class="coin ${kind} ${flat ? 'flat' : ''}" style="width:${w}px;height:${h}px;font-size:${Math.max(9, size * .3)}px">${fmt(v).replace('.00', '')}</span>`;
+}
+const coinRow = (list, size, flat) => list.map((v, i) => `<span class="clink" style="animation-delay:${.35 + i * .08}s">${coin(v, size, flat)}</span>`).join('');
+
+function buy() {
+  const p = prod(s.product); if (!p || s.result) return;
+  const paid = sum(s.inserted);
+  if (paid < p.price) {
+    s.result = { ok: false, code: 'INSUFFICIENT_PAYMENT', title: 'Not enough money', msg: `You paid ${fmt(paid)}. This costs ${fmt(p.price)}. Add ${fmt(p.price - paid)}.`, returned: s.inserted };
+  } else {
+    const change = makeChange(paid - p.price, s.supply);
+    if (!change) {
+      s.result = { ok: false, code: 'CANNOT_MAKE_CHANGE', title: 'No change available', msg: `The machine cannot make ${fmt(paid - p.price)} in change. Your ${fmt(paid)} was returned. Try exact money.`, returned: s.inserted };
+    } else {
+      change.forEach(c => s.supply[c]--); s.cash += paid;
+      s.result = { ok: true, item: p, change, title: `Enjoy your ${p.name}`, msg: change.length ? `Change: ${fmt(paid - p.price)} in ${change.length} coin${change.length > 1 ? 's' : ''}.` : 'Exact money. No change.' };
+    }
+  }
+  s.result.paid = paid;
+  log(s.result.ok ? { good: true, t: `${s.customer} bought ${p.code} · change ${fmt(sum(s.result.change))}` } : { good: false, t: `${s.customer} refused · ${s.result.code}` });
+  s.inserted = [];
+}
+
+function service() {
+  const supplyTotal = COINS.reduce((t, c) => t + c * s.supply[c], 0);
+  return `<aside class="svc"><h3>Service panel</h3>
+    <div class="svc-totals"><div><span>Change supply</span><b>${fmt(supplyTotal)}</b></div><div><span>Cash box</span><b>${fmt(s.cash)}</b></div></div>
+    <div class="svc-coins">${COINS.map(c => `<div class="svc-row ${s.supply[c] ? '' : 'empty'}">${coin(c, 22)}<div class="bar"><i style="width:${s.supply[c] * 10}%"></i></div><span>${s.supply[c]}×</span></div>`).join('')}</div>
+    <div class="svc-log">${s.log.slice(0, 8).map(l => `<div class="${l.good ? 'good' : 'bad'}"><time>${l.at}</time>${l.good ? '✓' : '✕'} ${l.t}</div>`).join('') || '<div>No sales yet.</div>'}</div>
+    <div class="svc-actions"><button data-act="reset">Reset machine</button><button data-act="rapid">Rapid fire ×4</button></div></aside>`;
+}
+
+/* ---------- Variant A ---------- */
+function VariantA() {
+  const r = s.result, p = r && r.ok ? r.item : prod(s.product), credit = r ? r.paid : sum(s.inserted);
+  const lcd = r ? (r.ok ? `<div class="big">VEND OK</div><div>CHANGE ${fmt(sum(r.change))}</div><div>THANK YOU</div>`
+                        : `<div class="big err">REFUSED</div><div class="err">${r.code.replace(/_/g, ' ')}</div><div class="err">TAKE COINS BELOW</div>`)
+    : `<div>${p ? `${p.code} ${p.name.toUpperCase()}` : 'SELECT ITEM'}</div><div class="big">${p ? `PRICE ${fmt(p.price)}` : ''}</div><div class="big">CREDIT ${fmt(credit)}</div>`;
+  const cup = r ? (r.ok ? coinRow(r.change, 28) : coinRow(r.returned, 28)) : '';
+  return `<div class="va"><div class="va-stage"><div class="va-machine">
+    <div class="va-marquee">SNACK·O·MATIC</div>
+    <div class="va-body">
+      <div class="va-glass">${[0, 1, 2].map(row => `<div class="va-shelf">${PRODUCTS.slice(row * 3, row * 3 + 3).map(pr => `
+        <button class="va-slot ${s.product === pr.code ? 'sel' : ''}" data-act="product" data-code="${pr.code}">
+          <span class="va-item">${pr.emoji}</span><span class="va-spiral"></span><span class="va-tag"><b>${pr.code}</b> ${fmt(pr.price)}</span></button>`).join('')}</div>`).join('')}
+        <div class="va-reflect"></div></div>
+      <div class="va-panel">
+        <div class="va-lcd">${lcd}</div>
+        <div class="va-label">CUSTOMER CARD</div>
+        <div class="va-cards">${CUSTOMERS.map(c => `<button class="${s.customer === c.name ? 'on' : ''}" data-act="customer" data-name="${c.name}">${c.name}</button>`).join('')}</div>
+        <div class="va-label">INSERT MONEY</div><div class="va-slotline"></div>
+        <div class="va-coins">${PAY.map(v => `<button class="coinbtn ${v >= 500 ? 'notebtn' : ''}" data-act="coin" data-v="${v}">${coin(v, 32)}</button>`).join('')}</div>
+        <div class="va-btns"><button class="va-buy" data-act="buy">BUY</button><button class="va-cancel" data-act="cancel">RETURN</button></div>
+      </div>
+    </div>
+    <div class="va-bottom"><div class="va-flap">${r && r.ok ? `<span class="drop">${r.item.emoji}</span>` : 'PUSH'}</div><div class="va-cup">${cup}</div></div>
+  </div>${service()}</div></div>`;
+}
+
+/* ---------- Variant B ---------- */
+function VariantB() {
+  const r = s.result, p = r && r.ok ? r.item : prod(s.product), credit = r ? r.paid : sum(s.inserted);
+  const diff = p ? credit - p.price : 0;
+  const res = r ? `<div class="vb-res ${r.ok ? 'ok' : 'bad'}"><b>${r.ok ? '✓ ' : '✕ '}${r.title}</b>${r.msg}
+      <div class="row">${(r.ok ? r.change : r.returned).map(v => coin(v, 30, true)).join('')}</div></div>` : '';
+  return `<div class="vb"><div class="vb-wrap">
+    <header class="vb-top"><div><h1>Snacks &amp; drinks</h1><p>Pick an item, add money, then pay.</p></div>
+      <div class="vb-seg">${CUSTOMERS.map(c => `<button class="${s.customer === c.name ? 'on' : ''}" data-act="customer" data-name="${c.name}"><i style="background:${c.color}">${c.name[0]}</i>${c.name}</button>`).join('')}</div></header>
+    <main class="vb-main">
+      <section class="vb-grid">${PRODUCTS.map(pr => `<button class="vb-card ${s.product === pr.code ? 'sel' : ''}" data-act="product" data-code="${pr.code}">
+        <div class="em" style="background:${pr.tint}">${pr.emoji}</div><b>${pr.name}</b><span>${pr.code}</span><div class="pr">${fmt(pr.price)}</div></button>`).join('')}</section>
+      <aside class="vb-order"><h2>Your order</h2>
+        ${p ? `<div class="vb-line"><span class="em">${p.emoji}</span><div><b>${p.name}</b><br><small>${p.code}</small></div><b>${fmt(p.price)}</b></div>` : '<div class="vb-empty">Choose an item</div>'}
+        <div class="vb-sub">Add money</div>
+        <div class="vb-coins">${PAY.map(v => `<button class="coinbtn ${v >= 500 ? 'notebtn' : ''}" data-act="coin" data-v="${v}">${coin(v, 36, true)}</button>`).join('')}</div>
+        <div class="vb-dl"><div><span>Price</span><span>${p ? fmt(p.price) : '–'}</span></div><div><span>Paid</span><span>${fmt(credit)}</span></div>
+          <div class="tot"><span>${diff < 0 ? 'Still to pay' : 'Change due'}</span><span>${fmt(Math.abs(diff))}</span></div></div>
+        <button class="vb-pay" data-act="buy">Pay ${fmt(credit)}</button><button class="vb-clear" data-act="cancel">Cancel and return money</button>
+        ${res}
+      </aside>
+    </main></div>${service()}</div>`;
+}
+
+/* ---------- Variant C ---------- */
+function VariantC() {
+  const r = s.result, p = r && r.ok ? r.item : prod(s.product), credit = r ? r.paid : sum(s.inserted);
+  const pct = p ? Math.min(100, credit / p.price * 100) : 0;
+  const hint = r ? (r.ok ? `Price ${fmt(p.price)} · change ${fmt(sum(r.change))}` : 'Your money is in the change tray') : p ? (credit < p.price ? `Add ${fmt(p.price - credit)} more` : credit === p.price ? 'Exact money' : `Change due: ${fmt(credit - p.price)}`) : 'Choose an item';
+  const res = r ? `<div class="vc-res ${r.ok ? 'ok' : 'bad'}"><b>${r.title}</b>${r.msg}</div>` : '';
+  return `<div class="vc"><div class="vc-stage"><div class="vc-machine">
+    <div class="vc-glass">${PRODUCTS.map(pr => `<button class="vc-card ${s.product === pr.code ? 'sel' : ''}" data-act="product" data-code="${pr.code}">
+      <span class="em">${pr.emoji}</span><small>${pr.name}</small><div class="pill"><span>${pr.code}</span><b>${fmt(pr.price)}</b></div></button>`).join('')}</div>
+    <div class="vc-screen">
+      <div class="vc-av"><span>Buying as</span>${CUSTOMERS.map(c => `<button class="${s.customer === c.name ? 'on' : ''}" style="background:${c.color}" data-act="customer" data-name="${c.name}">${c.name[0]}</button>`).join('')}</div>
+      <div class="vc-sel">${p ? `${p.code} · ${fmt(p.price)}<b>${p.name}</b>` : '<b>Choose an item</b>'}</div>
+      <div class="vc-credit ${r ? 'done' : ''}"><span>${r ? (r.ok ? 'Paid' : 'Returned') : 'Paying'}</span><b>${fmt(credit)}</b></div>
+      <div class="vc-prog"><i style="width:${pct}%"></i></div><div class="vc-hint">${hint}</div>
+      <div class="vc-coins ${r ? 'locked' : ''}">${PAY.map(v => `<button class="coinbtn ${v >= 500 ? 'notebtn' : ''}" data-act="coin" data-v="${v}" ${r ? 'disabled' : ''}>${coin(v, 34)}</button>`).join('')}</div>
+      ${r ? `<button class="vc-new" data-act="new">New purchase</button>` : `<div class="vc-btns"><button class="vc-buy" data-act="buy">Buy</button><button class="vc-cancel" data-act="cancel">Cancel</button></div>`}
+      ${res}
+    </div>
+    <div class="vc-tray"><div>${r && r.ok ? `<span class="drop">${r.item.emoji}</span>` : 'Collect item'}</div><div>${r ? coinRow(r.ok ? r.change : r.returned, 28) : 'Change'}</div></div>
+  </div>${service()}</div></div>`;
+}
+
+const RENDER = { A: VariantA, B: VariantB, C: VariantC };
+let variant = new URLSearchParams(location.search).get('variant');
+if (!RENDER[variant]) variant = 'A';
+
+function render() {
+  document.getElementById('app').innerHTML = RENDER[variant]();
+  document.getElementById('lbl').textContent = `${variant} (${VARIANTS[variant]})`;
+}
+function setVariant(v) {
+  variant = v; const u = new URL(location); u.searchParams.set('variant', v); history.replaceState(null, '', u); render();
+}
+
+const SCENARIOS = {
+  idle: () => ({ customer: 'Ada', product: 'A1', inserted: [50, 20, 10], result: null, supply: fullSupply(), cash: 0, log: [] }),
+  success: () => { s = { ...SCENARIOS.idle(), product: 'A2', inserted: [200] }; buy(); return s; },
+  refused: () => { s = { ...SCENARIOS.idle(), product: 'A1', inserted: [100], supply: { 200: 10, 100: 10, 50: 10, 20: 10, 10: 0, 5: 0, 2: 3, 1: 0 } }; buy(); return s; },
+};
+
+document.addEventListener('click', e => {
+  const b = e.target.closest('button'); if (!b) return;
+  const keys = Object.keys(RENDER);
+  if (b.dataset.bar) return setVariant(keys[(keys.indexOf(variant) + +b.dataset.bar + keys.length) % keys.length]);
+  if (b.dataset.scn) { s = SCENARIOS[b.dataset.scn](); return render(); }
+  const act = b.dataset.act; if (!act) return;
+  if (act !== 'buy') s.result = null;
+  if (act === 'product') s.product = b.dataset.code;
+  if (act === 'customer') s.customer = b.dataset.name;
+  if (act === 'coin') s.inserted.push(+b.dataset.v);
+  if (act === 'cancel') s.inserted = [];
+  if (act === 'buy') buy();
+  if (act === 'reset') s = { ...SCENARIOS.idle(), inserted: [], product: null };
+  if (act === 'rapid') { const run = ++rapidRuns; [1, 2, 3, 4].forEach(i => log(i < 4 ? { good: true, t: `${s.customer} run ${run} #${i} · sold` } : { good: false, t: `${s.customer} run ${run} #4 · RATE_LIMITED (retry 2.9s)` })); }
+  render();
+});
+document.addEventListener('keydown', e => {
+  if (e.target.closest('input, textarea, [contenteditable]')) return;
+  const keys = Object.keys(RENDER), d = e.key === 'ArrowRight' ? 1 : e.key === 'ArrowLeft' ? -1 : 0;
+  if (d) setVariant(keys[(keys.indexOf(variant) + d + keys.length) % keys.length]);
+});
+render();
+</script>
+</body>
+</html>
