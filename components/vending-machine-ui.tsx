@@ -153,7 +153,7 @@ export function VendingMachineUI({ initialSnapshot }: { initialSnapshot: Machine
   }
 
   return (
-    <main className="flex flex-wrap items-start justify-center gap-6 px-4 py-8">
+    <main className="flex flex-wrap items-start justify-center gap-6 px-4 pt-8 pb-24 md:pb-8">
       <div className="grid w-full max-w-[780px] gap-4 rounded-[36px] border border-white/8 bg-[linear-gradient(160deg,#222b3d,#121826)] p-[18px] shadow-[0_40px_80px_rgba(0,0,0,.55),inset_0_1px_0_rgba(255,255,255,.08)] md:grid-cols-[1fr_260px]">
         <section
           aria-label="Products"
@@ -235,7 +235,7 @@ export function VendingMachineUI({ initialSnapshot }: { initialSnapshot: Machine
               aria-valuenow={Math.round(progress)}
               className="h-1.5 overflow-hidden rounded-[3px] bg-white/8"
             >
-              <i className="block h-full bg-mint transition-[width] duration-300" style={{ width: `${progress}%` }} />
+              <i className="block h-full bg-mint transition-[width] duration-300 motion-reduce:transition-none" style={{ width: `${progress}%` }} />
             </div>
             <p className="mt-2 text-xs text-muted">{hintFor(selected, credit, outcome)}</p>
           </div>
@@ -301,7 +301,7 @@ export function VendingMachineUI({ initialSnapshot }: { initialSnapshot: Machine
         <div className="grid gap-4 md:col-span-2 md:grid-cols-[1fr_260px]">
           <section aria-label="Collection tray" className={TRAY}>
             {outcome?.ok ? (
-              <span className="text-[40px] leading-none" role="img" aria-label={outcome.item.name}>
+              <span className="drop text-[40px] leading-none" role="img" aria-label={outcome.item.name}>
                 {outcome.item.emoji}
               </span>
             ) : (
@@ -310,7 +310,12 @@ export function VendingMachineUI({ initialSnapshot }: { initialSnapshot: Machine
           </section>
           <section aria-label="Change tray" className={TRAY}>
             {outcome && outcome.tray.length > 0
-              ? outcome.tray.map((value, index) => <Coin key={index} value={value} size={28} />)
+              ? outcome.tray.map((value, index) => (
+                  // The coins fall one after another, near the end of the 0.6s item drop.
+                  <span key={index} className="clink" style={{ animationDelay: `${0.35 + index * 0.08}s` }}>
+                    <Coin value={value} size={28} />
+                  </span>
+                ))
               : "Change"}
           </section>
         </div>
