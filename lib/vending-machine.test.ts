@@ -1,4 +1,5 @@
 import { describe, expect, it } from "vitest";
+import { RATE_WINDOW_MS } from "./rate-limiter";
 import { createVendingMachine, type PurchaseRequest, type VendingMachine } from "./vending-machine";
 
 const NOW = 1_000_000;
@@ -52,16 +53,20 @@ describe("vending machine", () => {
 
   it("refuses change that needs a coin that ran out, keeps its state, and still sells with other coins", () => {
     const machine = createVendingMachine();
-    for (let sale = 0; sale < 10; sale++) machine.purchase({ customerId: "ada", price: 99, amountPaid: 100 }, NOW);
+    // Space the sales one rate limit window apart.
+    const later = NOW + 10 * RATE_WINDOW_MS;
+    for (let sale = 0; sale < 10; sale++) {
+      machine.purchase({ customerId: "ada", price: 99, amountPaid: 100 }, NOW + sale * RATE_WINDOW_MS);
+    }
     const before = moneyOf(machine);
     expect(before.changeSupply[1]).toBe(0);
 
-    const refused = machine.purchase({ customerId: "ada", price: 99, amountPaid: 100 }, NOW);
+    const refused = machine.purchase({ customerId: "ada", price: 99, amountPaid: 100 }, later);
 
     expect(refused).toEqual({ ok: false, code: "CANNOT_MAKE_CHANGE", changeDue: 1 });
     expect(moneyOf(machine)).toEqual(before);
 
-    const sold = machine.purchase({ customerId: "ada", price: 98, amountPaid: 100 }, NOW);
+    const sold = machine.purchase({ customerId: "ada", price: 98, amountPaid: 100 }, later);
 
     expect(sold).toEqual({ ok: true, change: [2], changeTotal: 2 });
     expect(machine.getSnapshot().changeSupply[1]).toBe(0);
@@ -108,6 +113,70 @@ describe("vending machine", () => {
     expect(moneyOf(machine)).toEqual(before);
   });
 
+  describe("rate limit", () => {
+    const exact = (customerId: string) => ({ customerId, price: 135, amountPaid: 135 });
+
+    it("refuses a fourth purchase in 3 seconds with the time until the next attempt, and keeps its state", () => {
+      const machine = createVendingMachine();
+      machine.purchase(exact("ada"), NOW);
+      machine.purchase(exact("ada"), NOW + 500);
+      machine.purchase(exact("ada"), NOW + 1000);
+      const before = moneyOf(machine);
+
+      const result = machine.purchase(exact("ada"), NOW + 1200);
+
+      expect(result).toEqual({ ok: false, code: "RATE_LIMITED", retryAfterMs: 1800 });
+      expect(moneyOf(machine)).toEqual(before);
+    });
+
+    it("sells again when the oldest purchase leaves the 3-second window", () => {
+      const machine = createVendingMachine();
+      machine.purchase(exact("ada"), NOW);
+      machine.purchase(exact("ada"), NOW + 500);
+      machine.purchase(exact("ada"), NOW + 1000);
+
+      expect(machine.purchase(exact("ada"), NOW + 2999)).toMatchObject({ code: "RATE_LIMITED", retryAfterMs: 1 });
+      expect(machine.purchase(exact("ada"), NOW + 3000)).toMatchObject({ ok: true });
+      expect(machine.purchase(exact("ada"), NOW + 3001)).toMatchObject({ code: "RATE_LIMITED", retryAfterMs: 499 });
+    });
+
+    it("does not count refused attempts", () => {
+      const machine = createVendingMachine();
+      for (let i = 0; i < 5; i++) machine.purchase({ customerId: "ada", price: 135, amountPaid: 0 }, NOW + i);
+      machine.purchase(exact("ada"), NOW + 10);
+      machine.purchase(exact("ada"), NOW + 11);
+      machine.purchase(exact("ada"), NOW + 12);
+      machine.purchase(exact("ada"), NOW + 13);
+
+      expect(machine.purchase(exact("ada"), NOW + 14)).toMatchObject({ code: "RATE_LIMITED", retryAfterMs: 2996 });
+    });
+
+    it("keeps a separate limit for each customer", () => {
+      const machine = createVendingMachine();
+      for (let i = 0; i < 3; i++) machine.purchase(exact("ada"), NOW + i);
+
+      expect(machine.purchase(exact("ada"), NOW + 3)).toMatchObject({ code: "RATE_LIMITED" });
+      expect(machine.purchase(exact("ben"), NOW + 3)).toEqual({ ok: true, change: [], changeTotal: 0 });
+    });
+
+    it("refuses a rate-limited request with a bad price as RATE_LIMITED, not INVALID_REQUEST", () => {
+      const machine = createVendingMachine();
+      for (let i = 0; i < 3; i++) machine.purchase(exact("ada"), NOW + i);
+
+      const result = machine.purchase(raw({ customerId: "ada", price: -1, amountPaid: "lots" }), NOW + 3);
+
+      expect(result).toEqual({ ok: false, code: "RATE_LIMITED", retryAfterMs: 2997 });
+    });
+
+    it("checks the customer ID before the rate limit", () => {
+      const machine = createVendingMachine();
+
+      const result = machine.purchase(raw({ customerId: 7, price: 135, amountPaid: 135 }), NOW);
+
+      expect(result).toEqual({ ok: false, code: "INVALID_REQUEST", message: BAD_CUSTOMER });
+    });
+  });
+
   describe("log", () => {
     it("records a sale with its time, customer and result", () => {
       const machine = createVendingMachine();
@@ -131,6 +200,17 @@ describe("vending machine", () => {
       ]);
     });
 
+    it("records the rapid fire run and shot, and drops a bad one", () => {
+      const machine = createVendingMachine();
+
+      machine.purchase({ customerId: "ada", price: 135, amountPaid: 135, rapidFire: { run: 2, shot: 4 } }, NOW);
+      machine.purchase(raw({ customerId: "ada", price: 135, amountPaid: 135, rapidFire: { run: "2", shot: 0 } }), NOW + 1);
+
+      const [second, first] = machine.getSnapshot().log;
+      expect(first).toEqual({ at: NOW, customerId: "ada", rapidFire: { run: 2, shot: 4 }, result: expect.anything() });
+      expect(second).not.toHaveProperty("rapidFire");
+    });
+
     it("keeps only the last 8 events, newest first", () => {
       const machine = createVendingMachine();
 
@@ -140,10 +220,13 @@ describe("vending machine", () => {
     });
   });
 
-  it("reset() puts back the £38.80 float and empties the cash box and the log", () => {
+  it("reset() puts back the £38.80 float and empties the cash box, the purchase times and the log", () => {
     const machine = createVendingMachine();
     machine.purchase({ customerId: "ada", price: 135, amountPaid: 200 }, NOW);
     machine.purchase({ customerId: "ada", price: 135, amountPaid: 100 }, NOW);
+    machine.purchase({ customerId: "ada", price: 135, amountPaid: 135 }, NOW + 1);
+    machine.purchase({ customerId: "ada", price: 135, amountPaid: 135 }, NOW + 2);
+    expect(machine.purchase({ customerId: "ada", price: 135, amountPaid: 135 }, NOW + 3)).toMatchObject({ code: "RATE_LIMITED" });
 
     machine.reset();
 
@@ -153,5 +236,6 @@ describe("vending machine", () => {
       cashBox: 0,
       log: [],
     });
+    expect(machine.purchase({ customerId: "ada", price: 135, amountPaid: 135 }, NOW + 4)).toMatchObject({ ok: true });
   });
 });

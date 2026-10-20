@@ -1,4 +1,5 @@
 import { Coin } from "@/components/coin";
+import { customerName, type Customer, type Product } from "@/lib/catalogue";
 import { formatPence } from "@/lib/money";
 import { DENOMINATIONS, FLOAT_PER_COIN, type LogEvent, type MachineSnapshot } from "@/lib/vending-machine";
 
@@ -10,8 +11,9 @@ const TIME = new Intl.DateTimeFormat("en-GB", {
   timeZone: "Europe/London",
 });
 
-function describe({ customerId, result }: LogEvent): string {
-  const customer = customerId ?? "Unknown customer";
+function describe({ customerId, rapidFire, result }: LogEvent): string {
+  const customer = customerId === null ? "Unknown customer" : customerName(customerId);
+  if (rapidFire) return `${customer} run ${rapidFire.run} #${rapidFire.shot} · ${result.ok ? "sold" : result.code}`;
   if (!result.ok) return `${customer} refused · ${result.code}`;
   return `${customer} bought · ${result.changeTotal ? `change ${formatPence(result.changeTotal)}` : "exact money"}`;
 }
@@ -29,10 +31,17 @@ export function ServicePanel({
   snapshot,
   onReset,
   resetting,
+  rapidFire,
+  onRapidFire,
+  firing,
 }: {
   snapshot: MachineSnapshot;
   onReset: () => void;
   resetting: boolean;
+  /** What a rapid fire run buys, or null before the customer selects a product. */
+  rapidFire: { customer: Customer; product: Product } | null;
+  onRapidFire: () => void;
+  firing: boolean;
 }) {
   return (
     <aside
@@ -91,7 +100,21 @@ export function ServicePanel({
         >
           Reset machine
         </button>
+        <button
+          type="button"
+          onClick={onRapidFire}
+          disabled={!rapidFire || firing}
+          aria-describedby="rapid-fire-hint"
+          className="flex-1 cursor-pointer rounded-lg bg-white/8 p-2 text-xs font-semibold disabled:cursor-not-allowed disabled:opacity-40"
+        >
+          Rapid fire ×4
+        </button>
       </div>
+      <p id="rapid-fire-hint" className="mt-2 text-[11px] text-muted">
+        {rapidFire
+          ? `Rapid fire buys ${rapidFire.product.code} 4 times as ${rapidFire.customer.name}, with exact money.`
+          : "Choose an item to use rapid fire."}
+      </p>
     </aside>
   );
 }
