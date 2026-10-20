@@ -7,12 +7,6 @@ export type Denomination = (typeof DENOMINATIONS)[number];
 
 export type ChangeSupply = Record<Denomination, number>;
 
-export type MachineSnapshot = {
-  changeSupply: ChangeSupply;
-  changeSupplyTotal: number;
-  cashBox: number;
-};
-
 export type PurchaseRequest = { customerId: string; price: number; amountPaid: number };
 
 export type PurchaseResult =
@@ -22,13 +16,26 @@ export type PurchaseResult =
   | { ok: false; code: "CANNOT_MAKE_CHANGE"; changeDue: number }
   | { ok: false; code: "INVALID_REQUEST"; message: string };
 
-export type VendingMachine = {
-  /** `now` is the time in ms. A refusal does not change the state. */
-  purchase(request: PurchaseRequest, now: number): PurchaseResult;
-  getSnapshot(): MachineSnapshot;
+/** `at` is the time in ms. `customerId` is null when the request has no valid one. */
+export type LogEvent = { at: number; customerId: string | null; result: PurchaseResult };
+
+export type MachineSnapshot = {
+  changeSupply: ChangeSupply;
+  changeSupplyTotal: number;
+  cashBox: number;
+  log: LogEvent[];
 };
 
-const FLOAT_PER_COIN = 10;
+export type VendingMachine = {
+  /** `now` is the time in ms. A refusal adds a log event and changes nothing else. */
+  purchase(request: PurchaseRequest, now: number): PurchaseResult;
+  getSnapshot(): MachineSnapshot;
+  /** Puts back the starting float and empties the cash box and the log. */
+  reset(): void;
+};
+
+export const FLOAT_PER_COIN = 10;
+const LOG_SIZE = 8;
 
 function startingFloat(): ChangeSupply {
   return Object.fromEntries(DENOMINATIONS.map((coin) => [coin, FLOAT_PER_COIN])) as ChangeSupply;
@@ -56,23 +63,32 @@ function moneyProblem({ price, amountPaid }: PurchaseRequest): string | null {
 export function createVendingMachine(): VendingMachine {
   const changeSupply = startingFloat();
   let cashBox = 0;
+  const log: LogEvent[] = [];
+
+  function sell(request: PurchaseRequest): PurchaseResult {
+    const invalid = customerProblem(request) ?? moneyProblem(request);
+    if (invalid) return { ok: false, code: "INVALID_REQUEST", message: invalid };
+
+    const { price, amountPaid } = request;
+    if (amountPaid < price) return { ok: false, code: "INSUFFICIENT_PAYMENT", shortfall: price - amountPaid };
+
+    const changeDue = amountPaid - price;
+    // Check the total first. makeChange() makes a table as large as the amount.
+    const change = changeDue <= totalOf(changeSupply) ? makeChange(changeDue, changeSupply) : null;
+    if (!change) return { ok: false, code: "CANNOT_MAKE_CHANGE", changeDue };
+
+    for (const coin of change) changeSupply[coin] -= 1;
+    cashBox += amountPaid;
+    return { ok: true, change, changeTotal: changeDue };
+  }
 
   return {
-    purchase(request) {
-      const invalid = customerProblem(request) ?? moneyProblem(request);
-      if (invalid) return { ok: false, code: "INVALID_REQUEST", message: invalid };
-
-      const { price, amountPaid } = request;
-      if (amountPaid < price) return { ok: false, code: "INSUFFICIENT_PAYMENT", shortfall: price - amountPaid };
-
-      const changeDue = amountPaid - price;
-      // Check the total first. makeChange() makes a table as large as the amount.
-      const change = changeDue <= totalOf(changeSupply) ? makeChange(changeDue, changeSupply) : null;
-      if (!change) return { ok: false, code: "CANNOT_MAKE_CHANGE", changeDue };
-
-      for (const coin of change) changeSupply[coin] -= 1;
-      cashBox += amountPaid;
-      return { ok: true, change, changeTotal: changeDue };
+    purchase(request, now) {
+      const result = sell(request);
+      const customerId = customerProblem(request) ? null : request.customerId;
+      log.unshift({ at: now, customerId, result });
+      log.length = Math.min(log.length, LOG_SIZE);
+      return result;
     },
 
     getSnapshot() {
@@ -80,7 +96,14 @@ export function createVendingMachine(): VendingMachine {
         changeSupply: { ...changeSupply },
         changeSupplyTotal: totalOf(changeSupply),
         cashBox,
+        log: structuredClone(log),
       };
+    },
+
+    reset() {
+      Object.assign(changeSupply, startingFloat());
+      cashBox = 0;
+      log.length = 0;
     },
   };
 }
