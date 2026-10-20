@@ -2,7 +2,7 @@
 
 A take-home task for Modo Energy. A customer buys an item with cash, and the machine gives the change in the fewest coins. The machine has a finite supply of coins and nobody refills it.
 
-**Live app:** _the link comes after the Vercel import (see [Deploy](#deploy))._
+**Live app:** https://vending-machine-xi-ten.vercel.app/
 
 The app uses Next.js (App Router), TypeScript and Tailwind CSS. Vitest runs the tests. There is no database.
 
