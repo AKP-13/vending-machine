@@ -1,14 +1,11 @@
 "use client";
 
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Coin, isNote } from "@/components/coin";
 import { ServicePanel } from "@/components/service-panel";
-import { CATALOGUE, PAYMENT_VALUES, type Product } from "@/lib/catalogue";
+import { CATALOGUE, CUSTOMERS, PAYMENT_VALUES, type Customer, type Product } from "@/lib/catalogue";
 import { formatPence } from "@/lib/money";
-import type { MachineSnapshot, PurchaseResult } from "@/lib/vending-machine";
-
-// Ticket 04 adds the customer selector.
-const CUSTOMER_ID = "ada";
+import type { MachineSnapshot, PurchaseRequest, PurchaseResult } from "@/lib/vending-machine";
 
 type Refusal = Extract<PurchaseResult, { ok: false }>;
 
@@ -16,6 +13,15 @@ type Refusal = Extract<PurchaseResult, { ok: false }>;
 type Outcome = { title: string; message: string; paid: number; tray: number[] } & ({ ok: true; item: Product } | { ok: false });
 
 const sum = (values: number[]) => values.reduce((total, value) => total + value, 0);
+
+async function postPurchase(request: PurchaseRequest) {
+  const response = await fetch("/api/purchase", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(request),
+  });
+  return (await response.json()) as { result: PurchaseResult; machine: MachineSnapshot };
+}
 
 function refusalText(result: Refusal, product: Product, paid: number): { title: string; message: string } {
   switch (result.code) {
@@ -30,7 +36,8 @@ function refusalText(result: Refusal, product: Product, paid: number): { title: 
         message: `The machine cannot make ${formatPence(result.changeDue)} in change. Your ${formatPence(paid)} was returned. Try exact money.`,
       };
     case "RATE_LIMITED":
-      return { title: "Too fast", message: `Too many purchases. Try again in ${(result.retryAfterMs / 1000).toFixed(1)}s.` };
+      // Round up, so the wait never shows as 0.0s.
+      return { title: "Too fast", message: `Too many purchases. Try again in ${(Math.ceil(result.retryAfterMs / 100) / 10).toFixed(1)}s.` };
     case "INVALID_REQUEST":
       return { title: "Not sold", message: result.message };
   }
@@ -62,6 +69,9 @@ const TRAY =
 export function VendingMachineUI({ initialSnapshot }: { initialSnapshot: MachineSnapshot }) {
   const [snapshot, setSnapshot] = useState(initialSnapshot);
   const [resetting, setResetting] = useState(false);
+  const [firing, setFiring] = useState(false);
+  const lastRun = useRef(0);
+  const [customer, setCustomer] = useState<Customer>(CUSTOMERS[0]);
   const [selected, setSelected] = useState<Product | null>(null);
   const [inserted, setInserted] = useState<number[]>([]);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
@@ -94,12 +104,7 @@ export function VendingMachineUI({ initialSnapshot }: { initialSnapshot: Machine
     const paid = sum(inserted);
     setBusy(true);
     try {
-      const response = await fetch("/api/purchase", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ customerId: CUSTOMER_ID, price: selected.price, amountPaid: paid }),
-      });
-      const { result, machine } = (await response.json()) as { result: PurchaseResult; machine: MachineSnapshot };
+      const { result, machine } = await postPurchase({ customerId: customer.id, price: selected.price, amountPaid: paid });
       setOutcome(toOutcome(result, selected, inserted));
       setSnapshot(machine);
     } catch {
@@ -116,16 +121,35 @@ export function VendingMachineUI({ initialSnapshot }: { initialSnapshot: Machine
     }
   }
 
-  async function resetMachine() {
-    setResetting(true);
+  async function showSnapshot(request: Promise<Response>) {
     try {
-      const response = await fetch("/api/reset", { method: "POST" });
+      const response = await request;
       if (response.ok) setSnapshot((await response.json()) as MachineSnapshot);
     } catch {
       // The panel keeps the last snapshot.
-    } finally {
-      setResetting(false);
     }
+  }
+
+  async function rapidFire() {
+    if (!selected) return;
+    // Other visitors share the log, so continue after the highest run in it.
+    const run = Math.max(lastRun.current, ...snapshot.log.map((event) => event.rapidFire?.run ?? 0)) + 1;
+    lastRun.current = run;
+    setFiring(true);
+    await Promise.allSettled(
+      [1, 2, 3, 4].map((shot) =>
+        postPurchase({ customerId: customer.id, price: selected.price, amountPaid: selected.price, rapidFire: { run, shot } }),
+      ),
+    );
+    // The four answers arrive in any order, so read the state after the last one.
+    await showSnapshot(fetch("/api/machine", { cache: "no-store" }));
+    setFiring(false);
+  }
+
+  async function resetMachine() {
+    setResetting(true);
+    await showSnapshot(fetch("/api/reset", { method: "POST" }));
+    setResetting(false);
   }
 
   return (
@@ -162,6 +186,32 @@ export function VendingMachineUI({ initialSnapshot }: { initialSnapshot: Machine
         </section>
 
         <section aria-label="Screen" className="flex flex-col gap-3 rounded-[22px] border border-white/6 bg-[#0a0f1c] p-4">
+          <div role="radiogroup" aria-labelledby="buying-as" className="flex items-center gap-2">
+            <span id="buying-as" className="mr-auto text-[11px] tracking-[.1em] text-[#6c7894] uppercase">
+              Buying as
+            </span>
+            {CUSTOMERS.map((option) => (
+              <label key={option.id} title={option.name} className="cursor-pointer">
+                <input
+                  type="radio"
+                  name="customer"
+                  value={option.id}
+                  checked={customer.id === option.id}
+                  onChange={() => setCustomer(option)}
+                  className="peer sr-only"
+                />
+                <span
+                  aria-hidden
+                  style={{ background: option.color }}
+                  className="grid size-8 place-items-center rounded-full text-[13px] font-bold text-white opacity-45 transition peer-checked:opacity-100 peer-checked:shadow-[0_0_0_2px_#0a0f1c,0_0_0_4px_#7cf2b0] peer-focus-visible:outline-2 peer-focus-visible:outline-offset-4 peer-focus-visible:outline-white"
+                >
+                  {option.name[0]}
+                </span>
+                <span className="sr-only">{option.name}</span>
+              </label>
+            ))}
+          </div>
+
           <div className="text-[13px] text-muted">
             {selected ? (
               <>
@@ -266,7 +316,14 @@ export function VendingMachineUI({ initialSnapshot }: { initialSnapshot: Machine
         </div>
       </div>
 
-      <ServicePanel snapshot={snapshot} onReset={resetMachine} resetting={resetting} />
+      <ServicePanel
+        snapshot={snapshot}
+        onReset={resetMachine}
+        resetting={resetting}
+        rapidFire={selected && { customer, product: selected }}
+        onRapidFire={rapidFire}
+        firing={firing}
+      />
     </main>
   );
 }

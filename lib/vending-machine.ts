@@ -1,13 +1,17 @@
 // All money is integer pence.
 
 import { makeChange } from "./change-maker";
+import { createRateLimiter } from "./rate-limiter";
 
 export const DENOMINATIONS = [1, 2, 5, 10, 20, 50, 100, 200] as const;
 export type Denomination = (typeof DENOMINATIONS)[number];
 
 export type ChangeSupply = Record<Denomination, number>;
 
-export type PurchaseRequest = { customerId: string; price: number; amountPaid: number };
+/** Labels one request of a "Rapid fire ×4" run in the log. */
+export type RapidFire = { run: number; shot: number };
+
+export type PurchaseRequest = { customerId: string; price: number; amountPaid: number; rapidFire?: RapidFire };
 
 export type PurchaseResult =
   | { ok: true; change: Denomination[]; changeTotal: number }
@@ -17,7 +21,7 @@ export type PurchaseResult =
   | { ok: false; code: "INVALID_REQUEST"; message: string };
 
 /** `at` is the time in ms. `customerId` is null when the request has no valid one. */
-export type LogEvent = { at: number; customerId: string | null; result: PurchaseResult };
+export type LogEvent = { at: number; customerId: string | null; rapidFire?: RapidFire; result: PurchaseResult };
 
 export type MachineSnapshot = {
   changeSupply: ChangeSupply;
@@ -30,7 +34,7 @@ export type VendingMachine = {
   /** `now` is the time in ms. A refusal adds a log event and changes nothing else. */
   purchase(request: PurchaseRequest, now: number): PurchaseResult;
   getSnapshot(): MachineSnapshot;
-  /** Puts back the starting float and empties the cash box and the log. */
+  /** Puts back the starting float and empties the cash box, the purchase times and the log. */
   reset(): void;
 };
 
@@ -60,14 +64,31 @@ function moneyProblem({ price, amountPaid }: PurchaseRequest): string | null {
   return null;
 }
 
+const isCount = (value: unknown): value is number => isWholePence(value) && value > 0;
+
+// The label only shows in the log, so drop a bad one and keep the purchase.
+function rapidFireOf(request: unknown): RapidFire | undefined {
+  const { rapidFire } = (request ?? {}) as { rapidFire?: Partial<Record<keyof RapidFire, unknown>> | null };
+  if (!rapidFire || !isCount(rapidFire.run) || !isCount(rapidFire.shot)) return undefined;
+  return { run: rapidFire.run, shot: rapidFire.shot };
+}
+
 export function createVendingMachine(): VendingMachine {
   const changeSupply = startingFloat();
   let cashBox = 0;
   const log: LogEvent[] = [];
+  const rateLimiter = createRateLimiter();
 
-  function sell(request: PurchaseRequest): PurchaseResult {
-    const invalid = customerProblem(request) ?? moneyProblem(request);
-    if (invalid) return { ok: false, code: "INVALID_REQUEST", message: invalid };
+  function sell(request: PurchaseRequest, now: number): PurchaseResult {
+    const badCustomer = customerProblem(request);
+    if (badCustomer) return { ok: false, code: "INVALID_REQUEST", message: badCustomer };
+
+    // Check the rate limit before the price.
+    const retryAfterMs = rateLimiter.retryAfterMs(request.customerId, now);
+    if (retryAfterMs > 0) return { ok: false, code: "RATE_LIMITED", retryAfterMs };
+
+    const badMoney = moneyProblem(request);
+    if (badMoney) return { ok: false, code: "INVALID_REQUEST", message: badMoney };
 
     const { price, amountPaid } = request;
     if (amountPaid < price) return { ok: false, code: "INSUFFICIENT_PAYMENT", shortfall: price - amountPaid };
@@ -79,14 +100,16 @@ export function createVendingMachine(): VendingMachine {
 
     for (const coin of change) changeSupply[coin] -= 1;
     cashBox += amountPaid;
+    rateLimiter.record(request.customerId, now);
     return { ok: true, change, changeTotal: changeDue };
   }
 
   return {
     purchase(request, now) {
-      const result = sell(request);
+      const result = sell(request, now);
       const customerId = customerProblem(request) ? null : request.customerId;
-      log.unshift({ at: now, customerId, result });
+      const rapidFire = rapidFireOf(request);
+      log.unshift({ at: now, customerId, ...(rapidFire && { rapidFire }), result });
       log.length = Math.min(log.length, LOG_SIZE);
       return result;
     },
@@ -104,6 +127,7 @@ export function createVendingMachine(): VendingMachine {
       Object.assign(changeSupply, startingFloat());
       cashBox = 0;
       log.length = 0;
+      rateLimiter.clear();
     },
   };
 }
