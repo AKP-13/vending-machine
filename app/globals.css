@@ -36,3 +36,15 @@ body {
 .coin.note { border-radius: 4px; color: #fff; text-shadow: none; }
 .coin.n500 { background: linear-gradient(135deg, #46b3a8, #237a72); }
 .coin.n1000 { background: linear-gradient(135deg, #f0924b, #b85a1c); }
+
+/* Motion (prototype variant C). */
+@keyframes drop { from { transform: translateY(-120px) rotate(-12deg); opacity: 0; } to { transform: none; opacity: 1; } }
+@keyframes clink { 0% { transform: translateY(-60px); opacity: 0; } 70% { transform: translateY(4px); opacity: 1; } 100% { transform: none; } }
+/* The keyframe has only a start frame, so the element returns to its own colours. */
+@keyframes flash { from { background-color: rgba(124, 242, 176, 0.3); color: #7cf2b0; } }
+.drop { display: inline-block; animation: drop 0.6s cubic-bezier(0.3, 1.4, 0.6, 1) both; }
+.clink { display: inline-grid; animation: clink 0.45s ease-out both; }
+.flash { animation: flash 0.9s ease-out; }
+@media (prefers-reduced-motion: reduce) {
+  .drop, .clink, .flash { animation: none; }
+}
