@@ -9,18 +9,65 @@ import type { PurchaseResult } from "@/lib/vending-machine";
 // Ticket 04 adds the customer selector.
 const CUSTOMER_ID = "ada";
 
-type Outcome = { title: string; message: string; ok: boolean };
+type Refusal = Extract<PurchaseResult, { ok: false }>;
 
-function toOutcome(result: PurchaseResult, product: Product, amountPaid: number): Outcome {
-  if (result.ok) return { ok: true, title: `Enjoy your ${product.name}`, message: "Exact money. No change." };
-  return { ok: false, title: "Not sold", message: `${result.code}. Your ${formatPence(amountPaid)} was returned.` };
+/** The result of a Buy. `tray` holds the change, or the returned money after a refusal. */
+type Outcome = { title: string; message: string; paid: number; tray: number[] } & ({ ok: true; item: Product } | { ok: false });
+
+const sum = (values: number[]) => values.reduce((total, value) => total + value, 0);
+
+function refusalText(result: Refusal, product: Product, paid: number): { title: string; message: string } {
+  switch (result.code) {
+    case "INSUFFICIENT_PAYMENT":
+      return {
+        title: "Not enough money",
+        message: `You paid ${formatPence(paid)}. This costs ${formatPence(product.price)}. Add ${formatPence(result.shortfall)}.`,
+      };
+    case "CANNOT_MAKE_CHANGE":
+      return {
+        title: "No change available",
+        message: `The machine cannot make ${formatPence(result.changeDue)} in change. Your ${formatPence(paid)} was returned. Try exact money.`,
+      };
+    case "RATE_LIMITED":
+      return { title: "Too fast", message: `Too many purchases. Try again in ${(result.retryAfterMs / 1000).toFixed(1)}s.` };
+    case "INVALID_REQUEST":
+      return { title: "Not sold", message: result.message };
+  }
 }
+
+function toOutcome(result: PurchaseResult, product: Product, inserted: number[]): Outcome {
+  const paid = sum(inserted);
+  if (!result.ok) return { ok: false, ...refusalText(result, product, paid), paid, tray: inserted };
+
+  const { change, changeTotal } = result;
+  const message =
+    change.length === 0
+      ? "Exact money. No change."
+      : `Change: ${formatPence(changeTotal)} in ${change.length} coin${change.length > 1 ? "s" : ""}.`;
+  return { ok: true, title: `Enjoy your ${product.name}`, message, paid, tray: change, item: product };
+}
+
+function hintFor(product: Product | null, credit: number, outcome: Outcome | null): string {
+  if (outcome?.ok) return `Price ${formatPence(outcome.item.price)} · change ${formatPence(sum(outcome.tray))}`;
+  if (outcome) return "Your money is in the change tray";
+  if (!product) return "Choose an item";
+  if (credit < product.price) return `Add ${formatPence(product.price - credit)} more`;
+  return credit === product.price ? "Exact money" : `Change due: ${formatPence(credit - product.price)}`;
+}
+
+const TRAY =
+  "flex min-h-20 flex-wrap items-center justify-center gap-1 rounded-[20px] bg-[#070a12] p-2 text-[11px] tracking-[.2em] text-[#3c4660] uppercase shadow-[inset_0_8px_16px_rgba(0,0,0,.6)]";
 
 export function VendingMachineUI() {
   const [selected, setSelected] = useState<Product | null>(null);
-  const [amountPaid, setAmountPaid] = useState(0);
+  const [inserted, setInserted] = useState<number[]>([]);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
   const [busy, setBusy] = useState(false);
+
+  // After a result, the screen locks until "New purchase" or a new product.
+  const locked = outcome !== null;
+  const credit = outcome ? outcome.paid : sum(inserted);
+  const progress = selected ? Math.min(100, (credit / selected.price) * 100) : 0;
 
   function select(product: Product) {
     setSelected(product);
@@ -28,30 +75,39 @@ export function VendingMachineUI() {
   }
 
   function insert(value: number) {
-    setAmountPaid((paid) => paid + value);
-    setOutcome(null);
+    setInserted((coins) => [...coins, value]);
   }
 
   function cancel() {
-    setAmountPaid(0);
+    setInserted([]);
+  }
+
+  function newPurchase() {
     setOutcome(null);
   }
 
   async function buy() {
     if (!selected) return;
+    const paid = sum(inserted);
     setBusy(true);
     try {
       const response = await fetch("/api/purchase", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ customerId: CUSTOMER_ID, price: selected.price, amountPaid }),
+        body: JSON.stringify({ customerId: CUSTOMER_ID, price: selected.price, amountPaid: paid }),
       });
       const { result } = (await response.json()) as { result: PurchaseResult };
-      setOutcome(toOutcome(result, selected, amountPaid));
+      setOutcome(toOutcome(result, selected, inserted));
     } catch {
-      setOutcome({ ok: false, title: "No answer", message: `The machine did not answer. Your ${formatPence(amountPaid)} was returned.` });
+      setOutcome({
+        ok: false,
+        title: "No answer",
+        message: `The machine did not answer. Your ${formatPence(paid)} was returned.`,
+        paid,
+        tray: inserted,
+      });
     } finally {
-      setAmountPaid(0);
+      setInserted([]);
       setBusy(false);
     }
   }
@@ -102,43 +158,65 @@ export function VendingMachineUI() {
           </div>
 
           <div className="flex items-baseline justify-between">
-            <span className="text-[13px] text-muted">Paying</span>
-            <b className="text-[34px] tracking-tight tabular-nums">{formatPence(amountPaid)}</b>
+            <span className="text-[13px] text-muted">{outcome ? (outcome.ok ? "Paid" : "Returned") : "Paying"}</span>
+            <b className={`text-[34px] tracking-tight tabular-nums ${locked ? "text-muted" : ""}`}>{formatPence(credit)}</b>
           </div>
 
-          <div className="grid grid-cols-4 justify-items-center gap-2">
+          <div>
+            <div
+              role="progressbar"
+              aria-label="Amount paid towards the price"
+              aria-valuenow={Math.round(progress)}
+              className="h-1.5 overflow-hidden rounded-[3px] bg-white/8"
+            >
+              <i className="block h-full bg-mint transition-[width] duration-300" style={{ width: `${progress}%` }} />
+            </div>
+            <p className="mt-2 text-xs text-muted">{hintFor(selected, credit, outcome)}</p>
+          </div>
+
+          <div className={`grid grid-cols-4 justify-items-center gap-2 ${locked ? "opacity-30" : ""}`}>
             {PAYMENT_VALUES.map((value) => (
               <button
                 key={value}
                 type="button"
                 aria-label={`Insert ${formatPence(value)}`}
                 onClick={() => insert(value)}
-                disabled={busy}
-                className={`cursor-pointer transition-transform active:translate-y-0.5 active:scale-95 ${isNote(value) ? "col-span-2" : ""}`}
+                disabled={busy || locked}
+                className={`cursor-pointer transition-transform disabled:cursor-not-allowed active:translate-y-0.5 active:scale-95 ${isNote(value) ? "col-span-2" : ""}`}
               >
                 <Coin value={value} />
               </button>
             ))}
           </div>
 
-          <div className="grid grid-cols-[2fr_1fr] gap-2">
+          {locked ? (
             <button
               type="button"
-              onClick={buy}
-              disabled={!selected || busy}
-              className="cursor-pointer rounded-[14px] bg-mint p-[13px] font-bold text-[#052] disabled:cursor-not-allowed disabled:opacity-40"
+              onClick={newPurchase}
+              className="cursor-pointer rounded-[14px] bg-white p-[13px] font-bold text-[#0a0f1c]"
             >
-              Buy
+              New purchase
             </button>
-            <button
-              type="button"
-              onClick={cancel}
-              disabled={busy}
-              className="cursor-pointer rounded-[14px] bg-white/8 p-[13px] font-bold"
-            >
-              Cancel
-            </button>
-          </div>
+          ) : (
+            <div className="grid grid-cols-[2fr_1fr] gap-2">
+              <button
+                type="button"
+                onClick={buy}
+                disabled={!selected || busy}
+                className="cursor-pointer rounded-[14px] bg-mint p-[13px] font-bold text-[#052] disabled:cursor-not-allowed disabled:opacity-40"
+              >
+                Buy
+              </button>
+              <button
+                type="button"
+                onClick={cancel}
+                disabled={busy}
+                className="cursor-pointer rounded-[14px] bg-white/8 p-[13px] font-bold"
+              >
+                Cancel
+              </button>
+            </div>
+          )}
 
           <div role="status">
             {outcome && (
@@ -153,6 +231,23 @@ export function VendingMachineUI() {
             )}
           </div>
         </section>
+
+        <div className="grid gap-4 md:col-span-2 md:grid-cols-[1fr_260px]">
+          <section aria-label="Collection tray" className={TRAY}>
+            {outcome?.ok ? (
+              <span className="text-[40px] leading-none" role="img" aria-label={outcome.item.name}>
+                {outcome.item.emoji}
+              </span>
+            ) : (
+              "Collect item"
+            )}
+          </section>
+          <section aria-label="Change tray" className={TRAY}>
+            {outcome && outcome.tray.length > 0
+              ? outcome.tray.map((value, index) => <Coin key={index} value={value} size={28} />)
+              : "Change"}
+          </section>
+        </div>
       </div>
     </main>
   );

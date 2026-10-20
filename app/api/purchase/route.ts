@@ -9,6 +9,8 @@ function statusOf(result: PurchaseResult): number {
 }
 
 export async function POST(request: Request) {
-  const result = machine.purchase(await request.json(), Date.now());
+  // Bad JSON becomes null, which the machine refuses as INVALID_REQUEST.
+  const body = await request.json().catch(() => null);
+  const result = machine.purchase(body, Date.now());
   return Response.json({ result, machine: machine.getSnapshot() }, { status: statusOf(result) });
 }
