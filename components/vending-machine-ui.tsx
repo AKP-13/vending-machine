@@ -2,9 +2,10 @@
 
 import { useState } from "react";
 import { Coin, isNote } from "@/components/coin";
+import { ServicePanel } from "@/components/service-panel";
 import { CATALOGUE, PAYMENT_VALUES, type Product } from "@/lib/catalogue";
 import { formatPence } from "@/lib/money";
-import type { PurchaseResult } from "@/lib/vending-machine";
+import type { MachineSnapshot, PurchaseResult } from "@/lib/vending-machine";
 
 // Ticket 04 adds the customer selector.
 const CUSTOMER_ID = "ada";
@@ -58,7 +59,9 @@ function hintFor(product: Product | null, credit: number, outcome: Outcome | nul
 const TRAY =
   "flex min-h-20 flex-wrap items-center justify-center gap-1 rounded-[20px] bg-[#070a12] p-2 text-[11px] tracking-[.2em] text-[#3c4660] uppercase shadow-[inset_0_8px_16px_rgba(0,0,0,.6)]";
 
-export function VendingMachineUI() {
+export function VendingMachineUI({ initialSnapshot }: { initialSnapshot: MachineSnapshot }) {
+  const [snapshot, setSnapshot] = useState(initialSnapshot);
+  const [resetting, setResetting] = useState(false);
   const [selected, setSelected] = useState<Product | null>(null);
   const [inserted, setInserted] = useState<number[]>([]);
   const [outcome, setOutcome] = useState<Outcome | null>(null);
@@ -96,8 +99,9 @@ export function VendingMachineUI() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ customerId: CUSTOMER_ID, price: selected.price, amountPaid: paid }),
       });
-      const { result } = (await response.json()) as { result: PurchaseResult };
+      const { result, machine } = (await response.json()) as { result: PurchaseResult; machine: MachineSnapshot };
       setOutcome(toOutcome(result, selected, inserted));
+      setSnapshot(machine);
     } catch {
       setOutcome({
         ok: false,
@@ -112,8 +116,20 @@ export function VendingMachineUI() {
     }
   }
 
+  async function resetMachine() {
+    setResetting(true);
+    try {
+      const response = await fetch("/api/reset", { method: "POST" });
+      if (response.ok) setSnapshot((await response.json()) as MachineSnapshot);
+    } catch {
+      // The panel keeps the last snapshot.
+    } finally {
+      setResetting(false);
+    }
+  }
+
   return (
-    <main className="flex justify-center px-4 py-8">
+    <main className="flex flex-wrap items-start justify-center gap-6 px-4 py-8">
       <div className="grid w-full max-w-[780px] gap-4 rounded-[36px] border border-white/8 bg-[linear-gradient(160deg,#222b3d,#121826)] p-[18px] shadow-[0_40px_80px_rgba(0,0,0,.55),inset_0_1px_0_rgba(255,255,255,.08)] md:grid-cols-[1fr_260px]">
         <section
           aria-label="Products"
@@ -249,6 +265,8 @@ export function VendingMachineUI() {
           </section>
         </div>
       </div>
+
+      <ServicePanel snapshot={snapshot} onReset={resetMachine} resetting={resetting} />
     </main>
   );
 }
