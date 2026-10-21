@@ -108,10 +108,6 @@ The work after the mark, one branch and one pull request for each ticket:
 - Ticket 05: the drop and coin animations (off with reduced motion), and the service panel as a drawer on a phone.
 - Ticket 06: this README and the Vercel deploy.
 
-## Deploy
-
-To deploy, import the GitHub repository in the Vercel dashboard. No Vercel CLI is necessary. Keep the Next.js defaults. Vercel then deploys each push to `main` to production, and each pull request gets a preview deploy.
-
 ## With more time
 
 - **Redis** (or another shared store) for the state, so that all Vercel instances share one machine and a redeploy keeps it.
