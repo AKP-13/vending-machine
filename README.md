@@ -1,6 +1,6 @@
 # Vending machine
 
-A take-home task for Modo Energy. A customer buys an item with cash, and the machine gives the change in the fewest coins. The machine has a finite supply of coins and nobody refills it.
+A customer buys an item with cash, and the machine gives the change in the fewest coins. The machine has a finite supply of coins and nobody refills it.
 
 **Live app:** https://vending-machine-xi-ten.vercel.app/
 
